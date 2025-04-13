@@ -1,5 +1,4 @@
 import os
-import sys
 import ast
 import json
 import tempfile
@@ -120,8 +119,8 @@ class PythonHabitAnalyzer:
                 temp_file_path = temp_file.name
                 temp_file.write(code.encode('utf-8'))
             
-            # Run pylint on the temporary file using Python module
-            cmd = [sys.executable, '-m', 'pylint', '--output-format=json', temp_file_path]
+            # Run pylint on the temporary file
+            cmd = ['pylint', '--output-format=json', temp_file_path]
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             # Process pylint output
