@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Runtime Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <!-- Highlight.js for code examples in feedback -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Python Runtime Analyzer</h1>
+            <p>Paste your Python code below to detect potential runtime issues that could cause your code to fail or behave unexpectedly, even if there are no syntax errors</p>
+            <div class="api-notice" id="api-notice">
+                <p><strong>Note:</strong> To enable AI-powered explanations, you need to set the <code>ANTHROPIC_API_KEY</code> environment variable.</p>
+                <p>Get your API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>.</p>
+            </div>
+        </header>
+        
+        <main>
+            <div class="code-input">
+                <div class="code-editor-container">
+                    <textarea id="code-editor" placeholder="Paste your Python code here..."></textarea>
+                </div>
+                <button id="analyze-btn">Analyze Runtime Issues</button>
+            </div>
+            
+            <div class="results-container">
+                <h2>Runtime Analysis Results</h2>
+                <div id="loading" class="hidden">Analyzing your code for runtime issues...</div>
+                <div id="results">
+                    <p class="initial-message">Your runtime analysis results will appear here</p>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Python Runtime Analyzer - A tool for detecting potential runtime issues in your Python code</p>
+        </footer>
+    </div>
+    
+    <!-- CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <!-- Highlight.js for code examples in feedback -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
