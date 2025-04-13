@@ -1,123 +1,97 @@
 /**
- * Python Help - Easter Egg Implementation
+ * Python Help - Easter Egg Hunt - Shared Library
  * 
  * This file implements the Easter egg hunt functionality for the Python Help website.
+ * Using local storage for egg tracking until Supabase integration is fixed.
  */
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+// Local storage keys
+const STORAGE_KEYS = {
+  USER_ID: 'easterEggUserId',
+  FOUND_EGGS: 'easterEggFound',
+  EGG_COUNT: 'easterEggCount'
+}
 
-// Initialize Supabase client
-const supabaseUrl = 'https://qsgzakwiivlrsmhobbma.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzZ3pha3dpaXZscnNtaG9iYm1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQ1MTIzMDgsImV4cCI6MjA2MDA4ODMwOH0.qjDPDeMdCA_IznASy1Hrv0O2kC9hgeRW9ed5IKZ9-44Y'
-const supabase = createClient(supabaseUrl, supabaseKey)
+// Egg definitions
+const EGGS = {
+  PY001: { code: 'PY001', website: 'Python Help', location: 'In the analyzer results' }
+}
 
 /**
  * Get or create a user ID for tracking egg collection
  */
-const getUserId = async () => {
+const getUserId = () => {
   // Check if we already have an ID in localStorage
-  let anonymousId = localStorage.getItem('easterEggUserId')
+  let userId = localStorage.getItem(STORAGE_KEYS.USER_ID)
   
-  if (!anonymousId) {
-    // Generate a new anonymous ID
-    anonymousId = 'anon_' + Math.random().toString(36).substring(2, 15)
-    localStorage.setItem('easterEggUserId', anonymousId)
+  if (!userId) {
+    // Generate a new ID
+    userId = 'user_' + Math.random().toString(36).substring(2, 15)
+    localStorage.setItem(STORAGE_KEYS.USER_ID, userId)
     
-    // Register this user in Supabase
-    await supabase
-      .from('users')
-      .insert({ anonymous_id: anonymousId })
+    // Initialize empty found eggs array
+    localStorage.setItem(STORAGE_KEYS.FOUND_EGGS, JSON.stringify([]))
+    localStorage.setItem(STORAGE_KEYS.EGG_COUNT, '0')
   }
   
-  // Get the UUID from Supabase
-  const { data, error } = await supabase
-    .from('users')
-    .select('id')
-    .eq('anonymous_id', anonymousId)
-    .single()
-    
-  if (error) {
-    console.error('Error fetching user:', error)
-    return null
-  }
-  
-  return data.id
+  return userId
 }
 
 /**
  * Record that a user found an egg
  */
-const findEgg = async (eggCode) => {
-  const userId = await getUserId()
-  if (!userId) return { success: false, message: 'Could not identify user' }
+const findEgg = (eggCode) => {
+  // Get user ID
+  const userId = getUserId()
   
-  // First, get the egg ID from the code
-  const { data: eggData, error: eggError } = await supabase
-    .from('eggs')
-    .select('id')
-    .eq('egg_code', eggCode)
-    .single()
-    
-  if (eggError || !eggData) {
+  // Check if the egg code is valid
+  if (!EGGS[eggCode]) {
     return { success: false, message: 'Invalid egg code' }
   }
   
-  // Record that this user found this egg
-  const { error: recordError } = await supabase
-    .from('user_eggs')
-    .insert({ 
-      user_id: userId, 
-      egg_id: eggData.id 
-    })
-    
-  if (recordError) {
-    // If it's a unique violation, the user already found this egg
-    if (recordError.code === '23505') {
-      return { success: false, message: 'You already found this egg!' }
-    }
-    return { success: false, message: 'Error recording egg find' }
+  // Get found eggs from local storage
+  const foundEggsStr = localStorage.getItem(STORAGE_KEYS.FOUND_EGGS) || '[]'
+  const foundEggs = JSON.parse(foundEggsStr)
+  
+  // Check if this egg has already been found
+  if (foundEggs.includes(eggCode)) {
+    return { success: false, message: 'You already found this egg!' }
   }
   
-  // Get the updated count
-  const { data: countData, error: countError } = await supabase
-    .from('user_egg_counts')
-    .select('eggs_found, completed_hunt')
-    .eq('user_id', userId)
-    .single()
-    
-  if (countError) {
-    return { success: true, message: 'Egg found!', count: '?' }
-  }
+  // Add the egg to the found eggs list
+  foundEggs.push(eggCode)
+  localStorage.setItem(STORAGE_KEYS.FOUND_EGGS, JSON.stringify(foundEggs))
+  
+  // Update the egg count
+  const count = foundEggs.length
+  localStorage.setItem(STORAGE_KEYS.EGG_COUNT, count.toString())
   
   return { 
     success: true, 
     message: 'Egg found!', 
-    count: countData.eggs_found,
-    completedHunt: countData.completed_hunt
+    count: count,
+    completedHunt: count >= 15
   }
 }
 
 /**
  * Get the user's current egg collection progress
  */
-const getEggProgress = async () => {
-  const userId = await getUserId()
-  if (!userId) return { count: 0, total: 15, completed: false }
+const getEggProgress = () => {
+  // Get user ID
+  getUserId() // Ensure user ID exists
   
-  const { data, error } = await supabase
-    .from('user_egg_counts')
-    .select('eggs_found, completed_hunt')
-    .eq('user_id', userId)
-    .single()
-    
-  if (error) {
-    return { count: 0, total: 15, completed: false }
-  }
+  // Get found eggs from local storage
+  const foundEggsStr = localStorage.getItem(STORAGE_KEYS.FOUND_EGGS) || '[]'
+  const foundEggs = JSON.parse(foundEggsStr)
+  
+  // Count the eggs
+  const count = foundEggs.length
   
   return { 
-    count: data.eggs_found, 
+    count: count, 
     total: 15, 
-    completed: data.completed_hunt 
+    completed: count >= 15 
   }
 }
 
