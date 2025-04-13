@@ -1,3 +1,6 @@
+// Import Easter egg functionality
+import { findEgg, getEggProgress, addEggCounterUI, showNotification } from './easterEgg-pythonHelp.js';
+
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize CodeMirror
     const codeEditorTextarea = document.getElementById('code-editor');
@@ -338,4 +341,44 @@ document.addEventListener('DOMContentLoaded', function() {
     hljs.configure({
         languages: ['python']
     });
+    
+    // Initialize Easter egg functionality
+    addEggCounterUI();
+    
+    // Add the Easter egg to the results
+    const addEggToResults = () => {
+        const resultsDiv = document.getElementById('results');
+        if (resultsDiv && !document.querySelector('.hidden-egg')) {
+            // Add the egg to the results
+            const egg = document.createElement('img');
+            egg.className = 'hidden-egg';
+            egg.src = '/static/easter-egg-high-quality-4k-ultra-hd-hdr-free-photo-removebg-preview.png';
+            egg.style.position = 'absolute';
+            egg.style.bottom = '10px';
+            egg.style.right = '10px';
+            egg.style.opacity = '0.15';
+            egg.style.width = '40px';
+            egg.style.height = 'auto';
+            
+            egg.addEventListener('click', async () => {
+                const result = await findEgg('PY001');
+                showNotification(result.message);
+            });
+            
+            // Make sure the results container has position relative
+            if (window.getComputedStyle(resultsDiv).position === 'static') {
+                resultsDiv.style.position = 'relative';
+            }
+            
+            resultsDiv.appendChild(egg);
+        }
+    };
+    
+    // Call addEggToResults when results are displayed
+    const originalDisplayResults = displayResults;
+    displayResults = function(feedback) {
+        originalDisplayResults(feedback);
+        // Add the egg after results are displayed
+        setTimeout(addEggToResults, 500);
+    };
 });

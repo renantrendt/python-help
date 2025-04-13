@@ -1,0 +1,63 @@
+/* Easter Egg Hunt Styling */
+
+/* Egg counter in bottom right corner */
+.egg-counter {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 10px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 1000;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.3s;
+}
+
+.egg-counter:hover {
+  transform: scale(1.1);
+}
+
+.egg-icon {
+  font-size: 24px;
+}
+
+/* Hidden eggs styling */
+.hidden-egg {
+  cursor: pointer;
+  opacity: 0.2;
+  transition: opacity 0.3s, transform 0.3s;
+  display: inline-block;
+}
+
+.hidden-egg:hover {
+  opacity: 1 !important;
+  transform: scale(1.2);
+}
+
+/* Notification when egg is found */
+.egg-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  animation: fadeIn 0.3s, fadeOut 0.3s 2.7s;
+  z-index: 1001;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
+}
