@@ -352,42 +352,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Apply syntax highlighting
                                 hljs.highlightElement(codeElement);
                                 
-                                // If this is an AFTER code block, add an Apply Fix button right after it
+                                // Reset tracking variables after processing the code block
                                 if (inAfterSection && currentAfterCode) {
-                                    // Create a button container for better styling
-                                    const btnContainer = document.createElement('div');
-                                    btnContainer.className = 'fix-button-container';
-                                    
-                                    const applyFixBtn = document.createElement('button');
-                                    applyFixBtn.className = 'apply-fix-btn';
-                                    applyFixBtn.innerHTML = '🔧 Apply This Fix';
-                                    
-                                    // Store the code in a closure to ensure each button uses the correct code
-                                    const codeToApply = currentAfterCode;
-                                    applyFixBtn.addEventListener('click', () => {
-                                        // Apply the fixed code to the editor
-                                        codeEditor.setValue(codeToApply.trim());
-                                        // Scroll to top of editor
-                                        document.querySelector('.code-editor-container').scrollIntoView({ behavior: 'smooth' });
-                                        // Show a success message
-                                        showMessage('✅ Fixed code has been applied to the editor!');
-                                        // After a short delay, re-analyze the code
-                                        setTimeout(() => {
-                                            analyzeCode(codeToApply.trim());
-                                        }, 1500);
-                                    });
-                                    
-                                    btnContainer.appendChild(applyFixBtn);
-                                    
-                                    // Add a label to make it clear what the button does
-                                    const buttonLabel = document.createElement('div');
-                                    buttonLabel.className = 'fix-button-label';
-                                    buttonLabel.textContent = 'Click to replace your code with this fixed version';
-                                    btnContainer.appendChild(buttonLabel);
-                                    
-                                    fixContent.appendChild(btnContainer);
-                                    
-                                    // Reset for next code block
                                     inAfterSection = false;
                                     currentAfterCode = null;
                                 }
