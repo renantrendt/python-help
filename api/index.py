@@ -16,21 +16,28 @@ load_dotenv()
 # Initialize Anthropic client
 anthropicClient = None
 try:
-    # Check if API key is available
+    # Get API key directly from environment
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     print(f"API key available: {bool(api_key)}")
-    if api_key:
-        print(f"API key length: {len(api_key)}")
-        print(f"API key starts with: {api_key[:10]}...")
-        # Set the API key explicitly
-        os.environ['ANTHROPIC_API_KEY'] = api_key.strip()
-        anthropicClient = Anthropic(api_key=api_key.strip())
-        print("Anthropic client initialized successfully with explicit API key")
-    else:
+    
+    if not api_key:
         print("No API key found in environment variables")
-        # Try initializing without explicit key (will use env var if available)
-        anthropicClient = Anthropic()
-        print("Anthropic client initialized successfully with default API key")
+        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+    
+    # Initialize with direct API key parameter (no env var manipulation)
+    anthropicClient = Anthropic(api_key=api_key.strip())
+    
+    # Test the client with a simple request to verify it works
+    try:
+        response = anthropicClient.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Test"}]
+        )
+        print("Anthropic client test successful")
+    except Exception as test_error:
+        print(f"Anthropic client test failed: {str(test_error)}")
+        raise
 except Exception as e:
     print(f"Failed to initialize Anthropic client: {str(e)}")
     print("AI explanations will not be available.")

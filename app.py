@@ -16,9 +16,30 @@ app = Flask(__name__)
 # Note: You'll need to set the ANTHROPIC_API_KEY environment variable
 anthropicClient = None
 try:
-    anthropicClient = Anthropic()
+    # Get API key directly from environment
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    print(f"API key available in app.py: {bool(api_key)}")
+    
+    if not api_key:
+        print("No API key found in environment variables in app.py")
+    else:
+        # Initialize with direct API key parameter
+        anthropicClient = Anthropic(api_key=api_key.strip())
+        print("Anthropic client initialized successfully in app.py")
+        
+        # Test the client with a simple request to verify it works
+        try:
+            response = anthropicClient.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Test"}]
+            )
+            print("Anthropic client test successful in app.py")
+        except Exception as test_error:
+            print(f"Anthropic client test failed in app.py: {str(test_error)}")
+            anthropicClient = None
 except Exception as e:
-    print(f"Failed to initialize Anthropic client: {str(e)}")
+    print(f"Failed to initialize Anthropic client in app.py: {str(e)}")
     print("AI explanations will not be available.")
 
 class PythonHabitAnalyzer:
