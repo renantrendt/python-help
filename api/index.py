@@ -16,6 +16,13 @@ load_dotenv()
 # Initialize Anthropic client
 anthropicClient = None
 try:
+    # Check if API key is available
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    print(f"API key available: {bool(api_key)}")
+    if api_key:
+        print(f"API key length: {len(api_key)}")
+        print(f"API key starts with: {api_key[:10]}...")
+    
     anthropicClient = Anthropic()
     print("Anthropic client initialized successfully")
 except Exception as e:
@@ -44,13 +51,27 @@ def analyze():
         
         # Generate explanations for each issue if AI is available
         if anthropicClient:
-            print("Generating explanations with Claude API...")
-            for issue in feedback:
-                # Only generate explanations for actual issues (not system messages)
-                if issue.get('source') != 'system':
-                    explanation_data = generate_explanation(issue, code_lines)
-                    issue['explanation'] = explanation_data['explanation']
-                    issue['fix'] = explanation_data['fix']
+            print("Anthropic client is available, generating explanations...")
+            try:
+                for issue in feedback:
+                    # Only generate explanations for actual issues (not system messages)
+                    if issue.get('source') != 'system':
+                        print(f"Generating explanation for issue: {issue.get('message')}")
+                        explanation_data = generate_explanation(issue, code_lines)
+                        print(f"Explanation generated: {bool(explanation_data.get('explanation'))}")
+                        issue['explanation'] = explanation_data['explanation']
+                        issue['fix'] = explanation_data['fix']
+            except Exception as explain_error:
+                print(f"Error generating explanations: {str(explain_error)}")
+                # Add an error message to the feedback
+                feedback.append({
+                    'line': 0,
+                    'message': f'Error generating explanations: {str(explain_error)}',
+                    'category': 'syntax_error',
+                    'source': 'system',
+                    'explanation': f'Failed to generate explanations: {str(explain_error)}',
+                    'fix': None
+                })
         else:
             print("Anthropic client not available, skipping explanations")
         
