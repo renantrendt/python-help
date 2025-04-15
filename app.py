@@ -16,18 +16,13 @@ app = Flask(__name__)
 # Note: You'll need to set the ANTHROPIC_API_KEY environment variable
 anthropicClient = None
 try:
-    # Get API key directly from environment
-    # First try with ANTHROPIC_API_KEY (standard)
+    # Get API key directly from environment - use only ANTHROPIC_API_KEY for consistency
     api_key = os.environ.get('ANTHROPIC_API_KEY')
-    
-    # If not found, try with VERCEL_ANTHROPIC_API_KEY (for Vercel)
-    if not api_key:
-        api_key = os.environ.get('VERCEL_ANTHROPIC_API_KEY')
     
     print(f"API key available in app.py: {bool(api_key)}")
     
     if not api_key:
-        print("No API key found in environment variables in app.py")
+        print("No ANTHROPIC_API_KEY found in environment variables")
     else:
         # Initialize with direct API key parameter
         anthropicClient = Anthropic(api_key=api_key.strip())
@@ -831,5 +826,8 @@ if __name__ == '__main__':
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# Export all necessary components for index.py to import
 # This is needed for Vercel to find the app
 app = app
+# These components are explicitly exported for use in index.py
+# Do not remove these exports

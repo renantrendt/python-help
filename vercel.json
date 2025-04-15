@@ -2,8 +2,8 @@
   "version": 2,
   "functions": {
     "api/index.py": {
-      "memory": 1024,
-      "maxDuration": 10
+      "memory": 2048,
+      "maxDuration": 30
     }
   },
   "routes": [
@@ -13,6 +13,8 @@
     }
   ],
   "env": {
-    "PYTHONUNBUFFERED": "true"
+    "PYTHONUNBUFFERED": "true",
+    "PYTHONPATH": ".",
+    "FLASK_ENV": "production"
   }
 }
