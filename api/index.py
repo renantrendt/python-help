@@ -92,11 +92,20 @@ def analyze():
         for item in feedback:
             # Convert old certainty levels to new categories if needed
             if 'certainty' in item and 'category' not in item:
-                if item.get('certainty') == 'might_error':
+                if item.get('certainty') == 'error':
+                    if 'SyntaxError' in item.get('message', ''):
+                        item['category'] = 'syntax_error'
+                    elif any(fatal in item.get('message', '') for fatal in ['division by zero', 'index out of range', 'key error']):
+                        item['category'] = 'fatal_error'
+                    else:
+                        item['category'] = 'runtime_error'
+                elif item.get('certainty') == 'might_error':
                     item['category'] = 'potential_error'
                 else:
-                    item['category'] = 'runtime_error'
-                    
+                    item['category'] = 'bad_habit'
+            elif 'category' not in item:
+                # Default to runtime error if no category specified
+                item['category'] = 'runtime_error'
         # Sort feedback by category priority and line number
         category_priority = {
             'syntax_error': 0,

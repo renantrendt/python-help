@@ -308,6 +308,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         const fixContent = document.createElement('div');
                         fixContent.className = 'fix-content';
                         
+                        // Store extracted code for the apply button
+                        let extractedAfterCode = null;
+                        
                         // Check if the fix contains code blocks
                         if (item.fix.includes('```python')) {
                             // Parse the fix content to extract and format code blocks
@@ -323,6 +326,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             for (let i = 1; i < parts.length; i++) {
                                 const codeAndRest = parts[i].split('```');
                                 const code = codeAndRest[0];
+                                
+                                // Store the AFTER code block for the apply button
+                                if (parts[0].toLowerCase().includes('after') && i === 1) {
+                                    extractedAfterCode = code;
+                                }
                                 
                                 // Create a formatted code block
                                 const codeBlock = document.createElement('pre');
@@ -341,6 +349,26 @@ document.addEventListener('DOMContentLoaded', function() {
                                     afterCode.textContent = codeAndRest[1];
                                     fixContent.appendChild(afterCode);
                                 }
+                            }
+                            
+                            // Add Apply Fix button if we have extracted code
+                            if (extractedAfterCode) {
+                                const applyFixBtn = document.createElement('button');
+                                applyFixBtn.className = 'apply-fix-btn';
+                                applyFixBtn.textContent = 'Apply Fix';
+                                applyFixBtn.addEventListener('click', () => {
+                                    // Apply the fixed code to the editor
+                                    codeEditor.setValue(extractedAfterCode.trim());
+                                    // Scroll to top of results
+                                    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+                                    // Show a success message
+                                    showMessage('Fixed code has been applied to the editor!');
+                                    // After a short delay, re-analyze the code
+                                    setTimeout(() => {
+                                        analyzeCode(extractedAfterCode.trim());
+                                    }, 1500);
+                                });
+                                fixContent.appendChild(applyFixBtn);
                             }
                         } else {
                             // Just display as plain text if no code blocks

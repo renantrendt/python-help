@@ -351,6 +351,24 @@ main {
     background: transparent;
 }
 
+/* Apply Fix button styling */
+.apply-fix-btn {
+    margin-top: 10px;
+    padding: 8px 15px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+    display: block;
+}
+
+.apply-fix-btn:hover {
+    background-color: #218838;
+}
+
 .fix-content code {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
     font-size: 13px;
