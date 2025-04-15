@@ -113,89 +113,97 @@ class PythonHabitAnalyzer:
     
     def _run_pylint_analysis(self, code):
         """Run pylint on the code and extract only critical messages with uncertainty levels."""
+        temp_file_path = None
         try:
             # Create a temporary file to store the code
             with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as temp_file:
                 temp_file_path = temp_file.name
                 temp_file.write(code.encode('utf-8'))
             
-            # Run pylint on the temporary file
-            cmd = ['pylint', '--output-format=json', temp_file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            # Process pylint output
-            if result.stdout:
-                try:
-                    pylint_results = json.loads(result.stdout)
-                    for msg in pylint_results:
-                        message_type = msg.get('type', '').lower()
-                        message = msg.get('message', '')
-                        line = msg.get('line', 0)
-                        symbol = msg.get('symbol', '')
-                        
-                        # Categorize issues by certainty
-                        definite_error_symbols = [
-                            'undefined-variable', 'used-before-assignment',
-                            'no-member', 'not-callable', 'unexpected-keyword-arg',
-                            'too-many-function-args', 'too-few-function-args',
-                            'invalid-sequence-index', 'invalid-slice-index',
-                            'attribute-error', 'import-error', 'no-name-in-module',
-                            'return-outside-function', 'yield-outside-function',
-                            'continue-outside-loop', 'break-outside-loop'
-                        ]
-                        
-                        potential_error_symbols = [
-                            'missing-kwoa', 'unsupported-assignment-operation', 
-                            'unsupported-delete-operation', 'unsupported-membership-test', 
-                            'unsubscriptable-object', 'undefined-loop-variable',
-                            'return-arg-in-generator', 'nonlocal-without-binding'
-                        ]
-                        
-                        # Determine certainty level based on context
-                        # Determine category based on message type and symbol
-                        if message_type == 'error' or symbol in definite_error_symbols:
-                            category = self.RUNTIME_ERROR
-                        elif symbol in potential_error_symbols:
-                            # Check context to see if this might be intentional
-                            # For example, if a variable is used in multiple places, it's less likely to be a typo
-                            if symbol == 'undefined-variable':
-                                var_name = message.split("'")
-                                if len(var_name) > 1 and var_name[1] in self.variables:
-                                    category = self.POTENTIAL_ERROR
+            try:
+                # Run pylint on the temporary file
+                cmd = ['pylint', '--output-format=json', temp_file_path]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                # Process pylint output
+                if result.stdout:
+                    try:
+                        pylint_results = json.loads(result.stdout)
+                        for msg in pylint_results:
+                            message_type = msg.get('type', '').lower()
+                            message = msg.get('message', '')
+                            line = msg.get('line', 0)
+                            symbol = msg.get('symbol', '')
+                            
+                            # Categorize issues by certainty
+                            definite_error_symbols = [
+                                'undefined-variable', 'used-before-assignment',
+                                'no-member', 'not-callable', 'unexpected-keyword-arg',
+                                'too-many-function-args', 'too-few-function-args',
+                                'invalid-sequence-index', 'invalid-slice-index',
+                                'attribute-error', 'import-error', 'no-name-in-module',
+                                'return-outside-function', 'yield-outside-function',
+                                'continue-outside-loop', 'break-outside-loop'
+                            ]
+                            
+                            potential_error_symbols = [
+                                'missing-kwoa', 'unsupported-assignment-operation', 
+                                'unsupported-delete-operation', 'unsupported-membership-test', 
+                                'unsubscriptable-object', 'undefined-loop-variable',
+                                'return-arg-in-generator', 'nonlocal-without-binding'
+                            ]
+                            
+                            # Determine certainty level based on context
+                            # Determine category based on message type and symbol
+                            if message_type == 'error' or symbol in definite_error_symbols:
+                                category = self.RUNTIME_ERROR
+                            elif symbol in potential_error_symbols:
+                                # Check context to see if this might be intentional
+                                # For example, if a variable is used in multiple places, it's less likely to be a typo
+                                if symbol == 'undefined-variable':
+                                    var_name = message.split("'")
+                                    if len(var_name) > 1 and var_name[1] in self.variables:
+                                        category = self.POTENTIAL_ERROR
+                                    else:
+                                        category = self.RUNTIME_ERROR
                                 else:
-                                    category = self.RUNTIME_ERROR
+                                    category = self.POTENTIAL_ERROR
                             else:
-                                category = self.POTENTIAL_ERROR
-                        else:
-                            category = self.BAD_HABIT
-                        
-                        if message_type == 'error' or symbol in definite_error_symbols or symbol in potential_error_symbols:
-                            self.feedback.append({
-                                'line': line,
-                                'message': message,
-                                'is_bad_habit': True,
-                                'category': category,
-                                'source': 'pylint'
-                            })
-                except json.JSONDecodeError:
-                    self.feedback.append({
-                        'line': 0,
-                        'message': 'Failed to parse pylint output',
-                        'is_bad_habit': False,
-                        'category': self.RUNTIME_ERROR,
-                        'source': 'system'
-                    })
-        except Exception as e:
-            self.feedback.append({
-                'line': 0,
-                'message': f'Error running pylint: {str(e)}',
-                'is_bad_habit': False,
-                'category': self.RUNTIME_ERROR,
-                'source': 'system'
-            })
+                                category = self.BAD_HABIT
+                            
+                            if message_type == 'error' or symbol in definite_error_symbols or symbol in potential_error_symbols:
+                                self.feedback.append({
+                                    'line': line,
+                                    'message': message,
+                                    'is_bad_habit': True,
+                                    'category': category,
+                                    'source': 'pylint'
+                                })
+                    except json.JSONDecodeError:
+                        self.feedback.append({
+                            'line': 0,
+                            'message': 'Failed to parse pylint output',
+                            'is_bad_habit': False,
+                            'category': self.RUNTIME_ERROR,
+                            'source': 'system'
+                        })
+            except FileNotFoundError:
+                # pylint is not installed or not in PATH
+                print("pylint not found in environment, skipping pylint analysis")
+                # Skip pylint analysis silently in production
+                pass
+            except Exception as e:
+                # Other errors
+                self.feedback.append({
+                    'line': 0,
+                    'message': f'Error running pylint: {str(e)}',
+                    'is_bad_habit': False,
+                    'category': self.RUNTIME_ERROR,
+                    'source': 'system'
+                })
         finally:
             # Clean up the temporary file
-            if os.path.exists(temp_file_path):
+            if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
     
     def _run_ast_analysis(self, code):
