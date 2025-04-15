@@ -1,11 +1,52 @@
 import os
+import ast
 import json
 import tempfile
 import subprocess
-import ast
 from flask import Flask, render_template, request, jsonify
+from anthropic import Anthropic
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
+
+# Initialize Anthropic client
+# Note: You'll need to set the ANTHROPIC_API_KEY environment variable
+anthropicClient = None
+try:
+    # Get API key directly from environment
+    # First try with ANTHROPIC_API_KEY (standard)
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    
+    # If not found, try with VERCEL_ANTHROPIC_API_KEY (for Vercel)
+    if not api_key:
+        api_key = os.environ.get('VERCEL_ANTHROPIC_API_KEY')
+    
+    print(f"API key available in app.py: {bool(api_key)}")
+    
+    if not api_key:
+        print("No API key found in environment variables in app.py")
+    else:
+        # Initialize with direct API key parameter
+        anthropicClient = Anthropic(api_key=api_key.strip())
+        print("Anthropic client initialized successfully in app.py")
+        
+        # Test the client with a simple request to verify it works
+        try:
+            response = anthropicClient.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Test"}]
+            )
+            print("Anthropic client test successful in app.py")
+        except Exception as test_error:
+            print(f"Anthropic client test failed in app.py: {str(test_error)}")
+            anthropicClient = None
+except Exception as e:
+    print(f"Failed to initialize Anthropic client in app.py: {str(e)}")
+    print("AI explanations will not be available.")
 
 class PythonHabitAnalyzer:
     """Analyzes Python code for actual runtime issues and bugs with context awareness."""
@@ -32,7 +73,6 @@ class PythonHabitAnalyzer:
         self.variables = {}
         self.functions = {}
         self.control_flow = []
-        self.comments = self._extract_comments(code)
         
         # First pass: build context (variables, functions, control flow)
         try:
@@ -100,135 +140,118 @@ class PythonHabitAnalyzer:
     
     def _run_pylint_analysis(self, code):
         """Run pylint on the code and extract only critical messages with uncertainty levels."""
+        temp_file_path = None
         try:
             # Create a temporary file to store the code
             with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as temp_file:
                 temp_file_path = temp_file.name
                 temp_file.write(code.encode('utf-8'))
             
-            # Run pylint on the temporary file
-            cmd = ['pylint', '--output-format=json', temp_file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            # Process pylint output
-            if result.stdout:
-                try:
-                    pylint_results = json.loads(result.stdout)
-                    for msg in pylint_results:
-                        message_type = msg.get('type', '').lower()
-                        message = msg.get('message', '')
-                        line = msg.get('line', 0)
-                        symbol = msg.get('symbol', '')
-                        
-                        # Categorize issues by certainty
-                        definite_error_symbols = [
-                            'undefined-variable', 'used-before-assignment',
-                            'no-member', 'not-callable', 'unexpected-keyword-arg',
-                            'too-many-function-args', 'too-few-function-args',
-                            'invalid-sequence-index', 'invalid-slice-index',
-                            'attribute-error', 'import-error', 'no-name-in-module',
-                            'return-outside-function', 'yield-outside-function',
-                            'continue-outside-loop', 'break-outside-loop'
-                        ]
-                        
-                        potential_error_symbols = [
-                            'missing-kwoa', 'unsupported-assignment-operation', 
-                            'unsupported-delete-operation', 'unsupported-membership-test', 
-                            'unsubscriptable-object', 'undefined-loop-variable',
-                            'return-arg-in-generator', 'nonlocal-without-binding'
-                        ]
-                        
-                        # Determine certainty level based on context
-                        # Determine category based on message type and symbol
-                        if message_type == 'error' or symbol in definite_error_symbols:
-                            category = self.RUNTIME_ERROR
-                        elif symbol in potential_error_symbols:
-                            # Check context to see if this might be intentional
-                            # For example, if a variable is used in multiple places, it's less likely to be a typo
-                            if symbol == 'undefined-variable':
-                                var_name = message.split("'")
-                                if len(var_name) > 1 and var_name[1] in self.variables:
-                                    category = self.POTENTIAL_ERROR
+            try:
+                # Run pylint on the temporary file
+                cmd = ['pylint', '--output-format=json', temp_file_path]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                # Process pylint output
+                if result.stdout:
+                    try:
+                        pylint_results = json.loads(result.stdout)
+                        for msg in pylint_results:
+                            message_type = msg.get('type', '').lower()
+                            message = msg.get('message', '')
+                            line = msg.get('line', 0)
+                            symbol = msg.get('symbol', '')
+                            
+                            # Categorize issues by certainty
+                            definite_error_symbols = [
+                                'undefined-variable', 'used-before-assignment',
+                                'no-member', 'not-callable', 'unexpected-keyword-arg',
+                                'too-many-function-args', 'too-few-function-args',
+                                'invalid-sequence-index', 'invalid-slice-index',
+                                'attribute-error', 'import-error', 'no-name-in-module',
+                                'return-outside-function', 'yield-outside-function',
+                                'continue-outside-loop', 'break-outside-loop'
+                            ]
+                            
+                            potential_error_symbols = [
+                                'missing-kwoa', 'unsupported-assignment-operation', 
+                                'unsupported-delete-operation', 'unsupported-membership-test', 
+                                'unsubscriptable-object', 'undefined-loop-variable',
+                                'return-arg-in-generator', 'nonlocal-without-binding'
+                            ]
+                            
+                            # Determine certainty level based on context
+                            # Determine category based on message type and symbol
+                            if message_type == 'error' or symbol in definite_error_symbols:
+                                category = self.RUNTIME_ERROR
+                            elif symbol in potential_error_symbols:
+                                # Check context to see if this might be intentional
+                                # For example, if a variable is used in multiple places, it's less likely to be a typo
+                                if symbol == 'undefined-variable':
+                                    var_name = message.split("'")
+                                    if len(var_name) > 1 and var_name[1] in self.variables:
+                                        category = self.POTENTIAL_ERROR
+                                    else:
+                                        category = self.RUNTIME_ERROR
                                 else:
-                                    category = self.RUNTIME_ERROR
+                                    category = self.POTENTIAL_ERROR
                             else:
-                                category = self.POTENTIAL_ERROR
-                        else:
-                            category = self.BAD_HABIT
-                        
-                        if message_type == 'error' or symbol in definite_error_symbols or symbol in potential_error_symbols:
-                            self.feedback.append({
-                                'line': line,
-                                'message': message,
-                                'is_bad_habit': True,
-                                'category': category,
-                                'source': 'pylint'
-                            })
-                except json.JSONDecodeError:
-                    self.feedback.append({
-                        'line': 0,
-                        'message': 'Failed to parse pylint output',
-                        'is_bad_habit': False,
-                        'category': self.RUNTIME_ERROR,
-                        'source': 'system'
-                    })
-        except Exception as e:
-            self.feedback.append({
-                'line': 0,
-                'message': f'Error running pylint: {str(e)}',
-                'is_bad_habit': False,
-                'category': self.RUNTIME_ERROR,
-                'source': 'system'
-            })
+                                category = self.BAD_HABIT
+                            
+                            if message_type == 'error' or symbol in definite_error_symbols or symbol in potential_error_symbols:
+                                self.feedback.append({
+                                    'line': line,
+                                    'message': message,
+                                    'is_bad_habit': True,
+                                    'category': category,
+                                    'source': 'pylint'
+                                })
+                    except json.JSONDecodeError:
+                        self.feedback.append({
+                            'line': 0,
+                            'message': 'Failed to parse pylint output',
+                            'is_bad_habit': False,
+                            'category': self.RUNTIME_ERROR,
+                            'source': 'system'
+                        })
+            except FileNotFoundError:
+                # pylint is not installed or not in PATH
+                print("pylint not found in environment, skipping pylint analysis")
+                # Skip pylint analysis silently in production
+                pass
+            except Exception as e:
+                # Other errors
+                self.feedback.append({
+                    'line': 0,
+                    'message': f'Error running pylint: {str(e)}',
+                    'is_bad_habit': False,
+                    'category': self.RUNTIME_ERROR,
+                    'source': 'system'
+                })
         finally:
             # Clean up the temporary file
-            if os.path.exists(temp_file_path):
+            if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
     
-    def _extract_comments(self, code):
-        """Extract all comments and their line numbers from the code."""
-        import tokenize
-        from io import BytesIO
-        
-        comments = {}
-        try:
-            for token in tokenize.tokenize(BytesIO(code.encode('utf-8')).readline):
-                if token.type == tokenize.COMMENT:
-                    comments[token.start[0]] = token.string
-        except tokenize.TokenError:
-            pass  # Handle incomplete code
-        return comments
-    
-    def _check_comment_awareness(self, line_number, keywords):
-        """Check if there are comments near the line indicating awareness of the issue."""
-        # Check for comments on the same line or up to 2 lines above
-        for i in range(max(1, line_number-2), line_number+1):
-            if i in self.comments:
-                comment = self.comments[i].lower()
-                # Look for keywords indicating awareness
-                if any(keyword.lower() in comment for keyword in keywords):
-                    return True
-        return False
-        
     def _run_ast_analysis(self, code):
         """Analyze code using Python's AST module for critical runtime issues with context awareness."""
         try:
+            # Parse the code into an AST
             tree = ast.parse(code)
-            # Extract variable and function definitions for context awareness
-            self._extract_definitions(tree)
-            # Run various checks
+            
+            # Run various custom checks for actual runtime issues with context awareness
             self._check_mutable_defaults(tree)
             self._check_infinite_loops(tree)
             self._check_exception_handling(tree)
             self._check_resource_management(tree)
             self._check_unreachable_code(tree)
             self._check_shadowing_builtins(tree)
+            
         except SyntaxError as e:
-            # Handle syntax errors
             self.feedback.append({
-                'line': e.lineno or 0,
+                'line': e.lineno if hasattr(e, 'lineno') else 0,
                 'message': f'Syntax error: {str(e)}',
-                'is_bad_habit': False,
+                'is_bad_habit': True,
                 'category': self.SYNTAX_ERROR,
                 'source': 'ast'
             })
@@ -240,207 +263,106 @@ class PythonHabitAnalyzer:
                 'category': self.RUNTIME_ERROR,
                 'source': 'system'
             })
+    
+    def _check_mutable_defaults(self, tree):
+        """Check for functions with mutable default arguments which cause unexpected behavior."""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                func_name = node.name
+                has_mutable_defaults = False
+                for arg in node.args.defaults:
+                    if isinstance(arg, (ast.List, ast.Dict, ast.Set)):
+                        has_mutable_defaults = True
+                        
+                        # Check if this might be intentional by looking at function usage
+                        category = self.RUNTIME_ERROR  # Default to runtime error
+                        
+                        # If the function is in our context and we have info about it
+                        if func_name in self.functions:
+                            func_info = self.functions[func_name]
+                            
+                            # If the function reassigns the mutable default, it might be intentional
+                            reassigns_default = False
+                            for i, arg_node in enumerate(node.args.args):
+                                if i < len(node.args.defaults) and isinstance(arg_node, ast.arg):
+                                    arg_name = arg_node.arg
+                                    # Check if this argument is reassigned in the function body
+                                    for subnode in ast.walk(node):
+                                        if isinstance(subnode, ast.Assign):
+                                            for target in subnode.targets:
+                                                if isinstance(target, ast.Name) and target.id == arg_name:
+                                                    reassigns_default = True
+                                                    break
+                            
+                            # If the function is called multiple times or reassigns the default
+                            if func_info['calls'] > 1 or reassigns_default:
                                 category = self.POTENTIAL_ERROR
+                            # If it's a common pattern but not causing issues yet
                             else:
-                                category = self.RUNTIME_ERROR
-                        else:
-                            category = self.POTENTIAL_ERROR
-                    else:
-                        category = self.BAD_HABIT
-                    
-                    if message_type == 'error' or symbol in definite_error_symbols or symbol in potential_error_symbols:
+                                category = self.BAD_HABIT
+                                
                         self.feedback.append({
-                            'line': line,
-                            'message': message,
+                            'line': node.lineno,
+                            'message': f'Function "{node.name}" uses mutable default argument ([], {{}}, or set()). This will be shared across all function calls, causing unexpected behavior when modified.',
                             'is_bad_habit': True,
                             'category': category,
-                            'source': 'pylint'
+                            'source': 'ast'
                         })
-            except json.JSONDecodeError:
-                self.feedback.append({
-                    'line': 0,
-                    'message': 'Failed to parse pylint output',
-                    'is_bad_habit': False,
-                    'category': self.RUNTIME_ERROR,
-                    'source': 'system'
-                })
-    except Exception as e:
-        self.feedback.append({
-            'line': 0,
-            'message': f'Error running pylint: {str(e)}',
-            'is_bad_habit': False,
-            'category': self.RUNTIME_ERROR,
-            'source': 'system'
-        })
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
     
-def _extract_comments(self, code):
-    """Extract all comments and their line numbers from the code."""
-    import tokenize
-    from io import BytesIO
-    
-    comments = {}
-    try:
-        for token in tokenize.tokenize(BytesIO(code.encode('utf-8')).readline):
-            if token.type == tokenize.COMMENT:
-                comments[token.start[0]] = token.string
-    except tokenize.TokenError:
-        pass  # Handle incomplete code
-    return comments
-    
-def _check_comment_awareness(self, line_number, keywords):
-    """Check if there are comments near the line indicating awareness of the issue."""
-    # Check for comments on the same line or up to 2 lines above
-    for i in range(max(1, line_number-2), line_number+1):
-        if i in self.comments:
-            comment = self.comments[i].lower()
-            # Look for keywords indicating awareness
-            if any(keyword.lower() in comment for keyword in keywords):
-                return True
-    return False
-        
-def _run_ast_analysis(self, code):
-    """Analyze code using Python's AST module for critical runtime issues with context awareness."""
-    try:
-        tree = ast.parse(code)
-        # Extract variable and function definitions for context awareness
-        self._extract_definitions(tree)
-        # Run various checks
-        self._check_mutable_defaults(tree)
-        self._check_infinite_loops(tree)
-        self._check_exception_handling(tree)
-        self._check_resource_management(tree)
-        self._check_unreachable_code(tree)
-        self._check_shadowing_builtins(tree)
-    except SyntaxError as e:
-        # Handle syntax errors
-        self.feedback.append({
-            'line': e.lineno or 0,
-            'message': f'Syntax error: {str(e)}',
-            'is_bad_habit': False,
-            'category': self.SYNTAX_ERROR,
-            'source': 'ast'
-        })
-    except Exception as e:
-        self.feedback.append({
-            'line': 0,
-            'message': f'Error during AST analysis: {str(e)}',
-            'is_bad_habit': False,
-            'category': self.RUNTIME_ERROR,
-            'source': 'system'
-        })
-    
-def _check_mutable_defaults(self, tree):
-    """Check for functions with mutable default arguments which cause unexpected behavior."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            for i, default in enumerate(node.args.defaults):
-                # Check if default is a mutable type (list, dict, set)
-                if isinstance(default, (ast.List, ast.Dict, ast.Set)):
-                    # Check if this function is used in the code
-                    func_name = node.name
-                    is_used = False
-                    if func_name in self.functions:
-                        is_used = self.functions[func_name]['calls'] > 0
+    def _check_infinite_loops(self, tree):
+        """Check for potential infinite loops with context awareness."""
+        for node in ast.walk(tree):
+            # Check for while loops with constant True condition
+            if isinstance(node, ast.While) and isinstance(node.test, ast.Constant):
+                if node.test.value is True:
+                    # Check if there's a break statement in the loop body
+                    has_break = False
+                    has_return = False
+                    has_raise = False
+                    has_sys_exit = False
                     
-                    # Check if the mutable default is actually modified in the function
-                    is_modified = False
-                    for subnode in ast.walk(node):
-                        # Look for assignments to the parameter
-                        if isinstance(subnode, ast.Assign):
-                            for target in subnode.targets:
-                                if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
-                                    # Get the parameter name that corresponds to this default
-                                    param_index = len(node.args.args) - len(node.args.defaults) + i
-                                    if param_index < len(node.args.args) and target.value.id == node.args.args[param_index].arg:
-                                        is_modified = True
-                                        break
-                    
-                    # Check for comments indicating awareness of mutable defaults
-                    awareness_keywords = [
-                        "mutable default", "intentional", "aware", "on purpose", 
-                        "shared across calls", "shared state"
-                    ]
-                    is_intentional = self._check_comment_awareness(node.lineno, awareness_keywords)
-                    
-                    # Determine category based on usage, modification, and comments
-                    if is_intentional:
-                        category = self.BAD_HABIT  # If comment indicates awareness, it's just a bad habit
-                    elif is_used and is_modified:
-                        category = self.RUNTIME_ERROR  # Definite runtime issue if used and modified
-                    elif is_modified:
-                        category = self.POTENTIAL_ERROR  # Potential issue if modified but not used yet
-                    else:
-                        category = self.BAD_HABIT  # Just a bad habit if not modified
-                    
-                    self.feedback.append({
-                        'line': node.lineno,
-                        'message': f'Function "{node.name}" uses mutable default argument ([], {{}}, or set()). This will be shared across all function calls, causing unexpected behavior when modified.',
-                        'is_bad_habit': True,
-                        'category': category,
-                        'source': 'ast'
-                    })
-                        
-def _check_infinite_loops(self, tree):
-    """Check for potential infinite loops with context awareness."""
-    for node in ast.walk(tree):
-        # Check for while loops with constant True condition
-        if isinstance(node, ast.While) and isinstance(node.test, ast.Constant):
-            if node.test.value is True:
-                # Check if there's a break statement in the loop body
-                has_break = False
-                has_return = False
-                has_raise = False
-                has_sys_exit = False
-                
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Break):
-                        has_break = True
-                        break
-                    elif isinstance(child, ast.Return):
-                        has_return = True
-                        break
-                    elif isinstance(child, ast.Raise):
-                        has_raise = True
-                        break
-                    # Check for sys.exit() calls
-                    elif (isinstance(child, ast.Call) and 
-                          isinstance(child.func, ast.Attribute) and 
-                          child.func.attr == 'exit'):
-                        has_sys_exit = True
-                        break
-                
-                # Determine category based on context
-                if not (has_break or has_return or has_raise or has_sys_exit):
-                    # Check if there's any complex condition that might be an exit condition
-                    has_complex_condition = False
                     for child in ast.walk(node):
-                        if isinstance(child, ast.If):
-                            has_complex_condition = True
+                        if isinstance(child, ast.Break):
+                            has_break = True
+                            break
+                        elif isinstance(child, ast.Return):
+                            has_return = True
+                            break
+                        elif isinstance(child, ast.Raise):
+                            has_raise = True
+                            break
+                        # Check for sys.exit() calls
+                        elif (isinstance(child, ast.Call) and 
+                              isinstance(child.func, ast.Attribute) and 
+                              child.func.attr == 'exit'):
+                            has_sys_exit = True
                             break
                     
-                    # Check for comments indicating intentional infinite loop
-                    awareness_keywords = [
-                        "intentional", "on purpose", "deliberate", 
-                        "infinite loop", "forever loop", "continuous loop",
-                        "meant to run forever", "daemon", "background task"
-                    ]
-                    
-                    is_intentional = self._check_comment_awareness(node.lineno, awareness_keywords)
-                    
-                    # Determine category based on context and comments
-                    if is_intentional:
-                        # If the comment indicates it's intentional, mark as bad habit instead of error
-                        category = self.BAD_HABIT
-                        message = 'Intentional infinite loop detected (while True without break). This is marked as a bad habit since your comment indicates it is deliberate.'
-                    else:
+                    # Determine category based on context
+                    if not (has_break or has_return or has_raise or has_sys_exit):
+                        # Check if there's any complex condition that might be an exit condition
+                        has_complex_condition = False
+                        for child in ast.walk(node):
+                            if isinstance(child, ast.If):
+                                has_complex_condition = True
+                                break
+                        
                         # If no exit condition is found, it's a fatal error
                         # If there's a complex condition, it might be intentional
                         category = self.POTENTIAL_ERROR if has_complex_condition else self.FATAL_ERROR
-                        message = 'Infinite loop detected (while True without break). This will cause your program to hang indefinitely.'
+                        
+                        self.feedback.append({
+                            'line': node.lineno,
+                            'message': 'Infinite loop detected (while True without break). This will cause your program to hang indefinitely.',
+                            'is_bad_habit': True,
+                            'category': category,
+                            'source': 'ast'
+                        })
+    
+    def _check_exception_handling(self, tree):
+        """Check for overly broad exception handling with context awareness."""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
                 if node.type is None or (isinstance(node.type, ast.Name) and node.type.id == 'Exception'):
                     # Check if the except block is just passing or too generic
                     is_just_pass = False
@@ -695,6 +617,141 @@ def _check_infinite_loops(self, tree):
                         'source': 'ast'
                     })
 
+def generate_explanation(issue, code_lines=None):
+    """Generate a user-friendly explanation and fix for an issue using Claude."""
+    if not anthropicClient:
+        print("Anthropic client not available. Cannot generate explanation.")
+        return {
+            "explanation": "AI explanations unavailable. Please set up the Anthropic API key.",
+            "fix": None
+        }
+    
+    try:
+        # Extract relevant information from the issue
+        category = issue.get('category', 'unknown')
+        message = issue.get('message', '')
+        line_num = issue.get('line', 0)
+        
+        print(f"Generating explanation for issue: {category} - {message} at line {line_num}")
+        
+        # Get the relevant code snippet if code_lines is provided
+        code_context = ""
+        if code_lines and line_num > 0:
+            # Get a few lines before and after the issue line for context
+            start_line = max(0, line_num - 3)
+            end_line = min(len(code_lines), line_num + 3)
+            for i in range(start_line, end_line):
+                if i < len(code_lines):
+                    line_marker = "-->" if i + 1 == issue['line'] else "   "
+                    code_context += f"{line_marker} {i+1}: {code_lines[i]}\n"
+        
+        # Prepare the prompt for Claude
+        category = issue.get('category', 'error')
+        message = issue.get('message', 'Unknown error')
+        
+        prompt = f"""You are a Python expert helping a programmer understand and fix an issue in their code.
+
+Issue Type: {category}
+Issue Message: {message}
+
+"""
+
+        if code_context:
+            prompt += f"""Code Context (the problematic line is marked with '-->'):  
+```python
+{code_context}
+```
+
+"""
+        
+        prompt += """Please provide:
+1. A clear explanation of what's causing this issue in plain language that's easy to understand.
+2. A specific fix for the code.
+
+Format your response exactly like this:
+Explanation: [Your explanation here]
+
+Fix: [Your suggested fix here, with code examples if applicable]
+"""
+
+        try:
+            # Call Claude API with timeout and retry logic
+            max_retries = 2
+            retry_count = 0
+            last_error = None
+            
+            while retry_count <= max_retries:
+                try:
+                    # Call Claude API
+                    response = anthropicClient.messages.create(
+                        model="claude-3-haiku-20240307",
+                        max_tokens=1000,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    
+                    # Extract the response text
+                    response_text = response.content[0].text
+                    print(f"Claude response received: {len(response_text)} chars")
+                    
+                    # Parse the response to extract explanation and fix
+                    if "Explanation:" in response_text:
+                        # Split by "Explanation:" and then by "Fix:"
+                        explanation_parts = response_text.split("Explanation:", 1)
+                        if len(explanation_parts) > 1:
+                            explanation_text = explanation_parts[1]
+                        else:
+                            explanation_text = response_text
+                        
+                        # Split to get the fix part
+                        fix_parts = explanation_text.split('Fix:', 1)
+                        explanation = fix_parts[0].strip()
+                        
+                        if len(fix_parts) > 1:
+                            fix = fix_parts[1].strip()
+                        else:
+                            fix = None
+                            print("No 'Fix:' section found in Claude response")
+                    else:
+                        explanation = "Claude did not return an explanation in the expected format."
+                        fix = None
+                        print(f"Failed to parse explanation from Claude response: {response_text}")
+                    
+                    return {
+                        "explanation": explanation,
+                        "fix": fix
+                    }
+                    
+                except Exception as retry_error:
+                    last_error = retry_error
+                    print(f"API call attempt {retry_count + 1} failed: {str(retry_error)}")
+                    retry_count += 1
+                    # Wait a bit before retrying (exponential backoff)
+                    import time
+                    time.sleep(1 * retry_count)
+            
+            # If we get here, all retries failed
+            error_message = f"Error calling Claude API after {max_retries + 1} attempts: {str(last_error)}"
+            print(error_message)
+            return {
+                "explanation": error_message,
+                "fix": None
+            }
+            
+        except Exception as api_error:
+            print(f"Error calling Claude API: {str(api_error)}")
+            return {
+                "explanation": f"Failed to generate explanation: {str(api_error)}",
+                "fix": None
+            }
+            
+    except Exception as e:
+        print(f"Error in generate_explanation: {str(e)}")
+        return {
+            "explanation": f"Failed to generate explanation: {str(e)}",
+            "fix": None
+        }
 
 @app.route('/')
 def index():
@@ -708,8 +765,29 @@ def analyze():
     data = request.get_json()
     code = data.get('code', '')
     
+    # Split code into lines for context in explanations
+    code_lines = code.split('\n')
+    
     analyzer = PythonHabitAnalyzer()
     feedback = analyzer.analyze(code)
+    
+    print(f"Found {len(feedback)} issues to analyze")
+    
+    # Generate explanations for each issue if AI is available
+    if anthropicClient:
+        print("Anthropic client is available, generating explanations...")
+        for i, issue in enumerate(feedback):
+            # Only generate explanations for actual issues (not system messages)
+            if issue.get('source') != 'system':
+                print(f"Generating explanation for issue {i+1}/{len(feedback)}")
+                explanation_data = generate_explanation(issue, code_lines)
+                issue['explanation'] = explanation_data['explanation']
+                issue['fix'] = explanation_data['fix']
+                print(f"Explanation added: {issue['explanation'][:50]}...")
+            else:
+                print(f"Skipping system message: {issue.get('message', '')}")
+    else:
+        print("Anthropic client is not available, skipping explanations")
     
     # Ensure all feedback items have a category
     for item in feedback:
@@ -744,5 +822,14 @@ def analyze():
     return jsonify({'feedback': feedback})
 
 
+# For local development
 if __name__ == '__main__':
     app.run(debug=True)
+
+# For Vercel deployment
+# Make sure Flask app is properly exported
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# This is needed for Vercel to find the app
+app = app
