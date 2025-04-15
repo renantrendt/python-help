@@ -593,6 +593,7 @@ class PythonHabitAnalyzer:
 def generate_explanation(issue, code_lines=None):
     """Generate a user-friendly explanation and fix for an issue using Claude."""
     if not anthropicClient:
+        print("Anthropic client not available. Cannot generate explanation.")
         return {
             "explanation": "AI explanations unavailable. Please set up the Anthropic API key.",
             "fix": None
@@ -603,6 +604,8 @@ def generate_explanation(issue, code_lines=None):
         category = issue.get('category', 'unknown')
         message = issue.get('message', '')
         line_num = issue.get('line', 0)
+        
+        print(f"Generating explanation for issue: {category} - {message} at line {line_num}")
         
         # Get the relevant code snippet if code_lines is provided
         code_snippet = ""
@@ -650,34 +653,54 @@ def generate_explanation(issue, code_lines=None):
         """
         
         # Call Claude API
-        message = anthropicClient.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=300,
-            temperature=0,
-            system="You are a helpful Python expert. Provide clear, concise explanations and fixes for Python code issues.",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # Extract and parse the response
-        response_text = message.content[0].text
-        
-        # Extract explanation and fix using the format markers
-        explanation_match = response_text.split('Explanation:', 1)
-        explanation = explanation_match[1].split('Fix:', 1)[0].strip() if len(explanation_match) > 1 else "Failed to parse explanation."
-        
-        fix_match = response_text.split('Fix:', 1)
-        fix = fix_match[1].strip() if len(fix_match) > 1 else None
-        
-        return {
-            "explanation": explanation,
-            "fix": fix
-        }
+        try:
+            message = anthropicClient.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=300,
+                temperature=0,
+                system="You are a helpful Python expert. Provide clear, concise explanations and fixes for Python code issues.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            # Extract and parse the response
+            response_text = message.content[0].text
+            print(f"Claude API response received: {response_text[:100]}...")
+            
+            # Extract explanation and fix using the format markers
+            explanation_match = response_text.split('Explanation:', 1)
+            if len(explanation_match) > 1:
+                explanation_text = explanation_match[1]
+                fix_parts = explanation_text.split('Fix:', 1)
+                explanation = fix_parts[0].strip()
+                
+                if len(fix_parts) > 1:
+                    fix = fix_parts[1].strip()
+                else:
+                    fix = None
+                    print("No 'Fix:' section found in Claude response")
+            else:
+                explanation = "Claude did not return an explanation in the expected format."
+                fix = None
+                print(f"Failed to parse explanation from Claude response: {response_text}")
+            
+            return {
+                "explanation": explanation,
+                "fix": fix
+            }
+            
+        except Exception as api_error:
+            print(f"Error calling Claude API: {str(api_error)}")
+            return {
+                "explanation": f"Error calling Claude API: {str(api_error)}",
+                "fix": None
+            }
+            
     except Exception as e:
-        print(f"Error generating explanation: {str(e)}")
+        print(f"Error in generate_explanation: {str(e)}")
         return {
-            "explanation": "Failed to generate explanation.",
+            "explanation": f"Failed to generate explanation: {str(e)}",
             "fix": None
         }
 
@@ -699,14 +722,23 @@ def analyze():
     analyzer = PythonHabitAnalyzer()
     feedback = analyzer.analyze(code)
     
+    print(f"Found {len(feedback)} issues to analyze")
+    
     # Generate explanations for each issue if AI is available
     if anthropicClient:
-        for issue in feedback:
+        print("Anthropic client is available, generating explanations...")
+        for i, issue in enumerate(feedback):
             # Only generate explanations for actual issues (not system messages)
             if issue.get('source') != 'system':
+                print(f"Generating explanation for issue {i+1}/{len(feedback)}")
                 explanation_data = generate_explanation(issue, code_lines)
                 issue['explanation'] = explanation_data['explanation']
                 issue['fix'] = explanation_data['fix']
+                print(f"Explanation added: {issue['explanation'][:50]}...")
+            else:
+                print(f"Skipping system message: {issue.get('message', '')}")
+    else:
+        print("Anthropic client is not available, skipping explanations")
     
     # Ensure all feedback items have a category
     for item in feedback:
