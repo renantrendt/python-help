@@ -69,10 +69,32 @@ document.addEventListener('DOMContentLoaded', function() {
             const hasExplanations = data.feedback.some(item => item.explanation);
             console.log('Has explanations from Claude:', hasExplanations);
             
-            if (!hasExplanations) {
+            if (!hasExplanations && data.feedback.length > 0) {
                 console.warn('No explanations found in the feedback items. Claude API may not be working.');
                 data.feedback.forEach((item, index) => {
                     console.log(`Item ${index + 1}:`, item);
+                });
+                
+                // Add a system message about Claude API not working
+                data.feedback.push({
+                    line: 0,
+                    message: 'Claude API is not providing explanations. Please check the environment variables in Vercel.',
+                    category: 'syntax_error',
+                    source: 'system',
+                    explanation: null,
+                    fix: null
+                });
+            }
+            
+            // If no feedback items at all, add a test item to verify the analyzer is working
+            if (data.feedback.length === 0) {
+                data.feedback.push({
+                    line: 1,
+                    message: 'Your code is fine.',
+                    category: '',
+                    source: '',
+                    explanation: null,
+                    fix: null
                 });
             }
             

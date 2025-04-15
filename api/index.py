@@ -22,9 +22,15 @@ try:
     if api_key:
         print(f"API key length: {len(api_key)}")
         print(f"API key starts with: {api_key[:10]}...")
-    
-    anthropicClient = Anthropic()
-    print("Anthropic client initialized successfully")
+        # Set the API key explicitly
+        os.environ['ANTHROPIC_API_KEY'] = api_key.strip()
+        anthropicClient = Anthropic(api_key=api_key.strip())
+        print("Anthropic client initialized successfully with explicit API key")
+    else:
+        print("No API key found in environment variables")
+        # Try initializing without explicit key (will use env var if available)
+        anthropicClient = Anthropic()
+        print("Anthropic client initialized successfully with default API key")
 except Exception as e:
     print(f"Failed to initialize Anthropic client: {str(e)}")
     print("AI explanations will not be available.")
@@ -113,7 +119,16 @@ def generate_explanation(issue, code_lines=None):
     if not anthropicClient:
         print("Anthropic client not available. Cannot generate explanation.")
         return {
-            "explanation": "AI explanations unavailable. Please set up the Anthropic API key.",
+            "explanation": "AI explanations unavailable. Please set up the Anthropic API key in Vercel environment variables.",
+            "fix": None
+        }
+    
+    # Double-check API key before making request
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        print("API key missing when generating explanation")
+        return {
+            "explanation": "API key is missing. Please set the ANTHROPIC_API_KEY environment variable in Vercel.",
             "fix": None
         }
     
