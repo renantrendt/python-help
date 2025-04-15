@@ -19,5 +19,14 @@
       "src": "/(.*)",
       "dest": "/app.py"
     }
-  ]
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "true"
+  },
+  "functions": {
+    "app.py": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }

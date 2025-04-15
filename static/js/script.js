@@ -75,15 +75,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log(`Item ${index + 1}:`, item);
                 });
                 
-                // Add a system message about Claude API not working
-                data.feedback.push({
-                    line: 0,
-                    message: 'Claude API is not providing explanations. Please check the environment variables in Vercel.',
-                    category: 'syntax_error',
-                    source: 'system',
-                    explanation: null,
-                    fix: null
-                });
+                // Check if there's already a system message about Claude API
+                const hasSystemMessage = data.feedback.some(item => 
+                    item.source === 'system' && 
+                    item.message && 
+                    item.message.includes('Claude API')
+                );
+                
+                // Only add the system message if there isn't one already
+                if (!hasSystemMessage) {
+                    // Add a system message about Claude API not working
+                    data.feedback.push({
+                        line: 0,
+                        message: 'Claude API is not providing explanations. This could be due to environment variables not being set correctly or API rate limits.',
+                        category: 'syntax_error',
+                        source: 'system',
+                        explanation: null,
+                        fix: null
+                    });
+                }
             }
             
             // If no feedback items, just display empty results (no message needed)

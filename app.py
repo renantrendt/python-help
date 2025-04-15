@@ -17,7 +17,13 @@ app = Flask(__name__)
 anthropicClient = None
 try:
     # Get API key directly from environment
+    # First try with ANTHROPIC_API_KEY (standard)
     api_key = os.environ.get('ANTHROPIC_API_KEY')
+    
+    # If not found, try with VERCEL_ANTHROPIC_API_KEY (for Vercel)
+    if not api_key:
+        api_key = os.environ.get('VERCEL_ANTHROPIC_API_KEY')
+    
     print(f"API key available in app.py: {bool(api_key)}")
     
     if not api_key:
@@ -629,92 +635,114 @@ def generate_explanation(issue, code_lines=None):
         print(f"Generating explanation for issue: {category} - {message} at line {line_num}")
         
         # Get the relevant code snippet if code_lines is provided
-        code_snippet = ""
+        code_context = ""
         if code_lines and line_num > 0:
             # Get a few lines before and after the issue line for context
             start_line = max(0, line_num - 3)
             end_line = min(len(code_lines), line_num + 3)
             for i in range(start_line, end_line):
                 if i < len(code_lines):
-                    code_snippet += f"{i+1} {code_lines[i]}\n"
+                    line_marker = "-->" if i + 1 == issue['line'] else "   "
+                    code_context += f"{line_marker} {i+1}: {code_lines[i]}\n"
         
-        # Create a prompt for Claude
+        # Prepare the prompt for Claude
+        category = issue.get('category', 'error')
+        message = issue.get('message', 'Unknown error')
+        
         prompt = f"""You are a Python expert helping a programmer understand and fix an issue in their code.
+
+Issue Type: {category}
+Issue Message: {message}
+
+"""
+
+        if code_context:
+            prompt += f"""Code Context (the problematic line is marked with '-->'):  
+```python
+{code_context}
+```
+
+"""
         
-        Issue Category: {category}
-        Issue Message: {message}
-        Line Number: {line_num}
-        
-        Here is the actual code with the issue:
-        ```python
-{code_snippet}
-        ```
-        
-        Please provide:
-        1. A very brief explanation (1-2 sentences max) of what this issue means in simple terms
-        2. A direct, specific code fix with EXACT code examples showing:
-           - The problematic code (labeled 'BEFORE:') with line numbers - USE THE EXACT CODE SHOWN ABOVE
-           - The fixed code (labeled 'AFTER:') with line numbers - MODIFY ONLY WHAT NEEDS TO BE CHANGED
-           - Show the EXACT code to replace, not just a description
-           - Use the same variable names and structure as in the original code
-        
-        Format your response exactly like this:
-        Explanation: [1-2 sentence explanation]
-        
-        Fix:
-        BEFORE:
-        ```python
-        # Exact problematic code with line numbers
-        ```
-        
-        AFTER:
-        ```python
-        # Exact fixed code with line numbers
-        ```
-        """
-        
-        # Call Claude API
+        prompt += """Please provide:
+1. A clear explanation of what's causing this issue in plain language that's easy to understand.
+2. A specific fix for the code.
+
+Format your response exactly like this:
+Explanation: [Your explanation here]
+
+Fix: [Your suggested fix here, with code examples if applicable]
+"""
+
         try:
-            message = anthropicClient.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=300,
-                temperature=0,
-                system="You are a helpful Python expert. Provide clear, concise explanations and fixes for Python code issues.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            # Call Claude API with timeout and retry logic
+            max_retries = 2
+            retry_count = 0
+            last_error = None
             
-            # Extract and parse the response
-            response_text = message.content[0].text
-            print(f"Claude API response received: {response_text[:100]}...")
+            while retry_count <= max_retries:
+                try:
+                    # Call Claude API
+                    response = anthropicClient.messages.create(
+                        model="claude-3-haiku-20240307",
+                        max_tokens=1000,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    
+                    # Extract the response text
+                    response_text = response.content[0].text
+                    print(f"Claude response received: {len(response_text)} chars")
+                    
+                    # Parse the response to extract explanation and fix
+                    if "Explanation:" in response_text:
+                        # Split by "Explanation:" and then by "Fix:"
+                        explanation_parts = response_text.split("Explanation:", 1)
+                        if len(explanation_parts) > 1:
+                            explanation_text = explanation_parts[1]
+                        else:
+                            explanation_text = response_text
+                        
+                        # Split to get the fix part
+                        fix_parts = explanation_text.split('Fix:', 1)
+                        explanation = fix_parts[0].strip()
+                        
+                        if len(fix_parts) > 1:
+                            fix = fix_parts[1].strip()
+                        else:
+                            fix = None
+                            print("No 'Fix:' section found in Claude response")
+                    else:
+                        explanation = "Claude did not return an explanation in the expected format."
+                        fix = None
+                        print(f"Failed to parse explanation from Claude response: {response_text}")
+                    
+                    return {
+                        "explanation": explanation,
+                        "fix": fix
+                    }
+                    
+                except Exception as retry_error:
+                    last_error = retry_error
+                    print(f"API call attempt {retry_count + 1} failed: {str(retry_error)}")
+                    retry_count += 1
+                    # Wait a bit before retrying (exponential backoff)
+                    import time
+                    time.sleep(1 * retry_count)
             
-            # Extract explanation and fix using the format markers
-            explanation_match = response_text.split('Explanation:', 1)
-            if len(explanation_match) > 1:
-                explanation_text = explanation_match[1]
-                fix_parts = explanation_text.split('Fix:', 1)
-                explanation = fix_parts[0].strip()
-                
-                if len(fix_parts) > 1:
-                    fix = fix_parts[1].strip()
-                else:
-                    fix = None
-                    print("No 'Fix:' section found in Claude response")
-            else:
-                explanation = "Claude did not return an explanation in the expected format."
-                fix = None
-                print(f"Failed to parse explanation from Claude response: {response_text}")
-            
+            # If we get here, all retries failed
+            error_message = f"Error calling Claude API after {max_retries + 1} attempts: {str(last_error)}"
+            print(error_message)
             return {
-                "explanation": explanation,
-                "fix": fix
+                "explanation": error_message,
+                "fix": None
             }
             
         except Exception as api_error:
             print(f"Error calling Claude API: {str(api_error)}")
             return {
-                "explanation": f"Error calling Claude API: {str(api_error)}",
+                "explanation": f"Failed to generate explanation: {str(api_error)}",
                 "fix": None
             }
             
@@ -799,4 +827,6 @@ if __name__ == '__main__':
     app.run(debug=True)
 
 # For Vercel deployment
-app = app
+# Export the Flask app correctly
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
