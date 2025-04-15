@@ -59,8 +59,106 @@ def analyze():
         # Split code into lines for context
         code_lines = code.split('\n')
         
-        analyzer = PythonHabitAnalyzer()
-        feedback = analyzer.analyze(code)
+        # Initialize feedback array
+        feedback = []
+        defined_vars = set()
+        defined_functions = set()
+        
+        # First pass: check for syntax errors
+        try:
+            compile(code, '<string>', 'exec')
+        except SyntaxError as e:
+            feedback.append({
+                'line': e.lineno,
+                'message': f'SyntaxError: {e.msg}',
+                'category': 'syntax_error',
+                'source': 'analyzer'
+            })
+        
+        # If no syntax errors, continue with other checks
+        if not feedback:
+            try:
+                # Try using the original analyzer if available
+                analyzer = PythonHabitAnalyzer()
+                feedback = analyzer.analyze(code)
+            except Exception as e:
+                print(f"Error using main analyzer: {e}")
+                # If the main analyzer fails, use our fallback implementation
+                try:
+                    # Parse the code
+                    import ast
+                    tree = ast.parse(code)
+                    
+                    # First pass: collect defined variables and functions
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Assign):
+                            for target in node.targets:
+                                if isinstance(target, ast.Name):
+                                    defined_vars.add(target.id)
+                        elif isinstance(node, ast.FunctionDef):
+                            defined_functions.add(node.name)
+                    
+                    # Second pass: check for issues
+                    for node in ast.walk(tree):
+                        # Check for undefined variables
+                        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                            var_name = node.id
+                            # Skip built-ins and common functions
+                            builtins = ['print', 'len', 'range', 'str', 'int', 'float', 'list', 'dict', 'set', 'tuple', 'sum', 'min', 'max', 'open', 'type']
+                            if var_name not in defined_vars and var_name not in defined_functions and var_name not in builtins and not var_name.startswith('__'):
+                                feedback.append({
+                                    'line': node.lineno,
+                                    'message': f'Undefined variable \'{var_name}\'',
+                                    'category': 'runtime_error',
+                                    'source': 'analyzer'
+                                })
+                        # Check for attribute errors
+                        elif isinstance(node, ast.Attribute):
+                            if isinstance(node.value, ast.Name):
+                                obj_name = node.value.id
+                                attr_name = node.attr
+                                # If we can't find the object in defined vars, it might be an attribute error
+                                if obj_name not in defined_vars and obj_name not in builtins:
+                                    feedback.append({
+                                        'line': node.lineno,
+                                        'message': f'Instance of \'{obj_name}\' has no \'{attr_name}\' member',
+                                        'category': 'runtime_error',
+                                        'source': 'analyzer'
+                                    })
+                        # Check for potential infinite loops
+                        elif isinstance(node, ast.While) and isinstance(node.test, ast.Constant) and node.test.value == True:
+                            feedback.append({
+                                'line': node.lineno,
+                                'message': 'Infinite loop detected',
+                                'category': 'fatal_error',
+                                'source': 'analyzer'
+                            })
+                        # Check for catching all exceptions
+                        elif isinstance(node, ast.ExceptHandler) and node.type is None:
+                            feedback.append({
+                                'line': node.lineno,
+                                'message': 'Catching all exceptions (bare except) is a bad practice',
+                                'category': 'bad_habit',
+                                'source': 'analyzer'
+                            })
+                        # Check for mutable default arguments
+                        elif isinstance(node, ast.FunctionDef):
+                            for default in node.args.defaults:
+                                if isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                                    feedback.append({
+                                        'line': node.lineno,
+                                        'message': f'Using mutable default argument in function \'{node.name}\'',
+                                        'category': 'potential_error',
+                                        'source': 'analyzer'
+                                    })
+                except Exception as ast_error:
+                    print(f"Error in AST analysis: {str(ast_error)}")
+                    feedback.append({
+                        'line': 1,
+                        'message': f'Error analyzing code: {str(ast_error)}',
+                        'category': 'runtime_error',
+                        'source': 'system'
+                    })
         
         # Generate explanations for each issue if AI is available
         if anthropicClient:
@@ -114,6 +212,9 @@ def analyze():
             'potential_error': 3,
             'bad_habit': 4
         }
+        
+        # Ensure all error types are being detected
+        print(f"Categories detected: {[item.get('category', 'unknown') for item in feedback]}")
         
         feedback.sort(key=lambda x: (category_priority.get(x.get('category', 'runtime_error'), 999), x.get('line', 0)))
         

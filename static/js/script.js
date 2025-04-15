@@ -308,9 +308,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         const fixContent = document.createElement('div');
                         fixContent.className = 'fix-content';
                         
-                        // Store extracted code for the apply button
-                        let extractedAfterCode = null;
-                        
                         // Check if the fix contains code blocks
                         if (item.fix.includes('```python')) {
                             // Parse the fix content to extract and format code blocks
@@ -322,14 +319,26 @@ document.addEventListener('DOMContentLoaded', function() {
                             beforeBlock.textContent = parts[0];
                             fixContent.appendChild(beforeBlock);
                             
+                            // Track if we're in an AFTER section
+                            let inAfterSection = false;
+                            let currentAfterCode = null;
+                            
                             // Process each code block
                             for (let i = 1; i < parts.length; i++) {
                                 const codeAndRest = parts[i].split('```');
                                 const code = codeAndRest[0];
                                 
-                                // Store the AFTER code block for the apply button
-                                if (parts[0].toLowerCase().includes('after') && i === 1) {
-                                    extractedAfterCode = code;
+                                // Check if this is an AFTER code block
+                                if (i > 1 && codeAndRest.length > 1) {
+                                    const prevText = parts[i-1].split('```')[1] || '';
+                                    if (prevText.toLowerCase().includes('after:') || 
+                                        (i === 2 && parts[0].toLowerCase().includes('after'))) {
+                                        inAfterSection = true;
+                                        currentAfterCode = code;
+                                    }
+                                } else if (i === 1 && parts[0].toLowerCase().includes('after')) {
+                                    inAfterSection = true;
+                                    currentAfterCode = code;
                                 }
                                 
                                 // Create a formatted code block
@@ -343,32 +352,52 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Apply syntax highlighting
                                 hljs.highlightElement(codeElement);
                                 
+                                // If this is an AFTER code block, add an Apply Fix button right after it
+                                if (inAfterSection && currentAfterCode) {
+                                    // Create a button container for better styling
+                                    const btnContainer = document.createElement('div');
+                                    btnContainer.className = 'fix-button-container';
+                                    
+                                    const applyFixBtn = document.createElement('button');
+                                    applyFixBtn.className = 'apply-fix-btn';
+                                    applyFixBtn.innerHTML = '🔧 Apply This Fix';
+                                    
+                                    // Store the code in a closure to ensure each button uses the correct code
+                                    const codeToApply = currentAfterCode;
+                                    applyFixBtn.addEventListener('click', () => {
+                                        // Apply the fixed code to the editor
+                                        codeEditor.setValue(codeToApply.trim());
+                                        // Scroll to top of editor
+                                        document.querySelector('.code-editor-container').scrollIntoView({ behavior: 'smooth' });
+                                        // Show a success message
+                                        showMessage('✅ Fixed code has been applied to the editor!');
+                                        // After a short delay, re-analyze the code
+                                        setTimeout(() => {
+                                            analyzeCode(codeToApply.trim());
+                                        }, 1500);
+                                    });
+                                    
+                                    btnContainer.appendChild(applyFixBtn);
+                                    
+                                    // Add a label to make it clear what the button does
+                                    const buttonLabel = document.createElement('div');
+                                    buttonLabel.className = 'fix-button-label';
+                                    buttonLabel.textContent = 'Click to replace your code with this fixed version';
+                                    btnContainer.appendChild(buttonLabel);
+                                    
+                                    fixContent.appendChild(btnContainer);
+                                    
+                                    // Reset for next code block
+                                    inAfterSection = false;
+                                    currentAfterCode = null;
+                                }
+                                
                                 // Add any text after the code block
                                 if (codeAndRest.length > 1 && codeAndRest[1].trim()) {
                                     const afterCode = document.createElement('div');
                                     afterCode.textContent = codeAndRest[1];
                                     fixContent.appendChild(afterCode);
                                 }
-                            }
-                            
-                            // Add Apply Fix button if we have extracted code
-                            if (extractedAfterCode) {
-                                const applyFixBtn = document.createElement('button');
-                                applyFixBtn.className = 'apply-fix-btn';
-                                applyFixBtn.textContent = 'Apply Fix';
-                                applyFixBtn.addEventListener('click', () => {
-                                    // Apply the fixed code to the editor
-                                    codeEditor.setValue(extractedAfterCode.trim());
-                                    // Scroll to top of results
-                                    resultsDiv.scrollIntoView({ behavior: 'smooth' });
-                                    // Show a success message
-                                    showMessage('Fixed code has been applied to the editor!');
-                                    // After a short delay, re-analyze the code
-                                    setTimeout(() => {
-                                        analyzeCode(extractedAfterCode.trim());
-                                    }, 1500);
-                                });
-                                fixContent.appendChild(applyFixBtn);
                             }
                         } else {
                             // Just display as plain text if no code blocks
