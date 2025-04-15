@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "app.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     },
     {
@@ -17,14 +17,14 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/app.py"
+      "dest": "/api/index.py"
     }
   ],
   "env": {
     "PYTHONUNBUFFERED": "true"
   },
   "functions": {
-    "app.py": {
+    "api/index.py": {
       "memory": 1024,
       "maxDuration": 10
     }

@@ -17,27 +17,36 @@ load_dotenv()
 anthropicClient = None
 try:
     # Get API key directly from environment
+    # First try with ANTHROPIC_API_KEY (standard)
     api_key = os.environ.get('ANTHROPIC_API_KEY')
+    
+    # If not found, try with VERCEL_ANTHROPIC_API_KEY (for Vercel)
+    if not api_key:
+        api_key = os.environ.get('VERCEL_ANTHROPIC_API_KEY')
+        if api_key:
+            print("Using VERCEL_ANTHROPIC_API_KEY instead of ANTHROPIC_API_KEY")
+    
     print(f"API key available: {bool(api_key)}")
     
     if not api_key:
         print("No API key found in environment variables")
-        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
-    
-    # Initialize with direct API key parameter (no env var manipulation)
-    anthropicClient = Anthropic(api_key=api_key.strip())
-    
-    # Test the client with a simple request to verify it works
-    try:
-        response = anthropicClient.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Test"}]
-        )
-        print("Anthropic client test successful")
-    except Exception as test_error:
-        print(f"Anthropic client test failed: {str(test_error)}")
-        raise
+        print("Checked both ANTHROPIC_API_KEY and VERCEL_ANTHROPIC_API_KEY")
+    else:
+        # Initialize with direct API key parameter
+        anthropicClient = Anthropic(api_key=api_key.strip())
+        print("Anthropic client initialized successfully")
+        
+        # Test the client with a simple request to verify it works
+        try:
+            response = anthropicClient.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Test"}]
+            )
+            print("Anthropic client test successful")
+        except Exception as test_error:
+            print(f"Anthropic client test failed: {str(test_error)}")
+            anthropicClient = None
 except Exception as e:
     print(f"Failed to initialize Anthropic client: {str(e)}")
     print("AI explanations will not be available.")
@@ -45,6 +54,10 @@ except Exception as e:
 app = Flask(__name__)
 app.template_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'templates')
 app.static_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static')
+
+# Add ProxyFix middleware for proper request handling in Vercel
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 @app.route('/')
 def index():
