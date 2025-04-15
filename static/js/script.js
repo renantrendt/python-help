@@ -86,17 +86,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             
-            // If no feedback items at all, add a test item to verify the analyzer is working
-            if (data.feedback.length === 0) {
-                data.feedback.push({
-                    line: 1,
-                    message: 'Your code is fine.',
-                    category: '',
-                    source: '',
-                    explanation: null,
-                    fix: null
-                });
-            }
+            // If no feedback items, just display empty results (no message needed)
+            // The empty results will indicate the code is good
             
             displayResults(data.feedback);
         } catch (error) {
