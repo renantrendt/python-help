@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to send code to the backend
     async function analyzeCode(code) {
         try {
+            console.log('Sending code to backend for analysis...');
             const response = await fetch('/analyze', {
                 method: 'POST',
                 headers: {
@@ -56,12 +57,28 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (!response.ok) {
+                console.error(`HTTP error! Status: ${response.status}`);
                 throw new Error(`HTTP error! Status: ${response.status}`);
             }
             
             const data = await response.json();
+            console.log('Received analysis results:', data);
+            console.log('Number of feedback items:', data.feedback.length);
+            
+            // Check if any items have explanations
+            const hasExplanations = data.feedback.some(item => item.explanation);
+            console.log('Has explanations from Claude:', hasExplanations);
+            
+            if (!hasExplanations) {
+                console.warn('No explanations found in the feedback items. Claude API may not be working.');
+                data.feedback.forEach((item, index) => {
+                    console.log(`Item ${index + 1}:`, item);
+                });
+            }
+            
             displayResults(data.feedback);
         } catch (error) {
+            console.error('Error during analysis:', error);
             showMessage(`Error: ${error.message}`);
         } finally {
             // Hide loading indicator
@@ -78,6 +95,21 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage('No issues found. Your code looks good!');
             return;
         }
+        
+        // Log explanations to console
+        console.log('Displaying feedback items with explanations:');
+        feedback.forEach((item, index) => {
+            console.log(`Feedback item ${index + 1}:`);
+            console.log(`- Category: ${item.category}`);
+            console.log(`- Message: ${item.message}`);
+            console.log(`- Has explanation: ${Boolean(item.explanation)}`);
+            if (item.explanation) {
+                console.log(`- Explanation: ${item.explanation}`);
+            }
+            if (item.fix) {
+                console.log(`- Has fix: true`);
+            }
+        });
         
         // Create a document fragment to improve performance
         const fragment = document.createDocumentFragment();
@@ -223,36 +255,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 contentDiv.appendChild(messageDiv);
                 
-                // Add AI explanation and fix in a more concise format
-                if (item.explanation || item.fix) {
-                    // Create container for both explanation and fix
+                // Add AI explanation if available
+                if (item.explanation) {
+                    console.log(`Rendering explanation for item at line ${item.line}: ${item.explanation.substring(0, 50)}...`);
                     const aiHelpDiv = document.createElement('div');
-                    aiHelpDiv.className = 'ai-help-container';
+                    aiHelpDiv.className = 'ai-help';
                     
-                    // Add explanation if available
-                    if (item.explanation) {
-                        const explanationDiv = document.createElement('div');
-                        explanationDiv.className = 'feedback-explanation';
-                        
-                        // Create explanation header
-                        const explanationHeader = document.createElement('div');
-                        explanationHeader.className = 'explanation-header';
-                        explanationHeader.textContent = 'Explanation:';
-                        explanationDiv.appendChild(explanationHeader);
-                        
-                        // Create explanation content
-                        const explanationContent = document.createElement('div');
-                        explanationContent.className = 'explanation-content';
-                        explanationContent.textContent = item.explanation;
-                        explanationDiv.appendChild(explanationContent);
-                        
-                        aiHelpDiv.appendChild(explanationDiv);
-                    }
+                    // Create explanation section
+                    const explanationDiv = document.createElement('div');
+                    explanationDiv.className = 'explanation';
                     
-                    // Add fix suggestion if available
+                    // Create explanation header
+                    const explanationHeader = document.createElement('div');
+                    explanationHeader.className = 'explanation-header';
+                    explanationHeader.textContent = 'Explanation:';
+                    explanationDiv.appendChild(explanationHeader);
+                    
+                    // Create explanation content
+                    const explanationContent = document.createElement('div');
+                    explanationContent.className = 'explanation-content';
+                    explanationContent.textContent = item.explanation;
+                    explanationDiv.appendChild(explanationContent);
+                    
+                    aiHelpDiv.appendChild(explanationDiv);
+                    
+                    // Add fix if available
                     if (item.fix) {
+                        console.log(`Rendering fix for item at line ${item.line}`);
                         const fixDiv = document.createElement('div');
-                        fixDiv.className = 'feedback-fix';
+                        fixDiv.className = 'fix';
                         
                         // Create fix header
                         const fixHeader = document.createElement('div');
